@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 *.__pycache__/
+*.your_library.egg-info/
