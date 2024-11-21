@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: quosc
-Version: 0.2.0
+Version: 0.4.0
 Summary: Simulating quantum oscillations
 Home-page: https://github.com/mihirm2305/quosc
 Author: Mihir Manium
@@ -44,6 +44,8 @@ Requires-Dist: rtree
 Requires-Dist: seaborn
 
 # QuOsc
+
+Developed within **[Quantum matter in high magnetic fields](https://www.physics.ox.ac.uk/research/group/quantum-matter-high-magnetic-fields)** group at University of Oxford, Department of Physics.
 
 QuOsc is a python package for simulating quantum oscillations in torque magnetometry. It performs the following steps:
 

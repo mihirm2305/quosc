@@ -77,3 +77,42 @@ def get_interpolation_coefficients(
     interpolation_coefficients = np.array(data_bt[2]['real']) + 1j*np.array(data_bt[2]['imag'])
 
     return interpolation_coefficients
+
+
+# Function to read a BXSF file
+def load_skeaf(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load a .skeaf file and return the band structure, fermi energy, and reciprocal lattice vectors
+    """
+    
+    with open(filepath
+                ) as f:
+            lines = f.readlines()
+    if 'Fermi Energy' not in lines[1]:
+        raise ValueError('Fermi energy not found in the file')
+    fermi_energy = float(lines[1].split()[-1])
+
+    # number on line 6
+    number = int(lines[6].split()[-1])
+
+    nk = np.array([int(n) for n in lines[7].split()])
+    reciprocal_lattice = np.array([list(map(float, line.split())) for line in lines[9:12]])
+    a_0 = 0.5291772105  # Bohr radius in Angstrom
+    reciprocal_lattice *=  2 * np.pi / a_0
+    nband = int(lines[12].split()[-1])
+    energies = []
+    for line in lines[13:]:
+        if 'END_BANDGRID_3D' in line:
+            break
+        energies.extend(list(map(float, line.split())))
+    energies = np.array(energies)
+    if len(energies) != nk[0]*nk[1]*nk[2]:
+        raise ValueError('Number of energies does not match the number of k-points and bands')
+    kpoints = [np.array([i, j, k]) for i in range(nk[0]) for j in range(nk[1]) for k in range(nk[2])]
+    kpoints = np.array(kpoints)
+    k_step = reciprocal_lattice / nk
+    # kpoints = kpoints.dot(k_step)
+    k_grid = kpoints.reshape(nk[0], nk[1], nk[2], 3)
+    energy_grid = energies.reshape(nk[0], nk[1], nk[2])
+
+    return energy_grid, fermi_energy, reciprocal_lattice
