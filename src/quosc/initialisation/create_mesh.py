@@ -5,7 +5,8 @@ from skimage import measure
 
 def tile_mesh(
         egrid: np.ndarray,
-        tiling: int | Tuple[int, int, int] = 3
+        tiling: int | Tuple[int, int, int] = 3,
+        endpoints_included: bool = True
 ) -> np.ndarray:
     """
     Tile a mesh grid to create a larger mesh grid.
@@ -13,6 +14,7 @@ def tile_mesh(
     Args:
         egrid: 3D array of energy values.
         tiling: Number of times to tile the mesh grid in each direction.
+        endpoint: Whether to include the edge points of the mesh grid.
 
     Returns:
         3D array of energy values with the mesh grid tiled.
@@ -20,9 +22,16 @@ def tile_mesh(
     if isinstance(tiling, int):
         tiling = (tiling, tiling, tiling)
 
-    # remove the edge points (and then re-add them later)
-    egrid_temp = egrid[:,0:-1, 0:-1, 0:-1]    
+    if endpoints_included:
+        # remove the edge points (and then re-add them later)
+        egrid_temp = egrid[:,0:-1, 0:-1, 0:-1]
+    else:
+        egrid_temp = egrid
+
     egrid_tiled = np.tile(egrid_temp, (1,) + tiling)
+
+    # Add the edge points back in
+    egrid_tiled = np.pad(egrid_tiled, ((0, 0), (0, 1), (0, 1), (0, 1)), mode='wrap')
 
     return egrid_tiled
 

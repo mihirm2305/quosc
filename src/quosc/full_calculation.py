@@ -15,25 +15,29 @@ import warnings
 def calculate_single_frequencies_curvatures(
             normal: np.ndarray,
             mesh: trimesh.Trimesh,
-            reciprocal_lattice: np.ndarray
+            reciprocal_lattice: np.ndarray,
+            height_bz_divisions: int = 100,
+            area_grouping_tolerance: float = 0.05,
+            frequency_tolerance: float = 0.02,
+            curvature_tolerance: float = 0.6
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Calculate the frequencies and curvatures (and counts) for a single normal.
         """
         
         try:
-            heights = generate_heights(reciprocal_lattice)
+            heights = generate_heights(reciprocal_lattice, bz_divisions=height_bz_divisions)
             sections = calculate_sections(mesh, normal, heights)
             areas, heights, centres = get_section_data(sections, normal, heights)
 
-            grouped_areas, grouped_heights, grouped_centres, grouped_indices = group_by_centre(areas, heights, centres, reciprocal_lattice)
+            grouped_areas, grouped_heights, grouped_centres, grouped_indices = group_by_centre(areas, heights, centres, reciprocal_lattice, tolerance=area_grouping_tolerance)
             fine_areas, fine_heights, fine_centres, fine_indices = split_groups_by_area(grouped_areas, grouped_heights, grouped_centres, grouped_indices, reciprocal_lattice)
 
             extremal_freqs, extremal_curvs, extremal_centres, extremal_indices = calculate_extremal_orbits(fine_areas, fine_heights, fine_centres, fine_indices)
 
             filtered_freqs, filtered_curvs, filtered_centres = filter_extremal_orbits(extremal_freqs, extremal_curvs, extremal_centres, reciprocal_lattice)
 
-            final_freqs, final_curvs, final_centres, final_counts = group_extremal_orbits(filtered_freqs, filtered_curvs, filtered_centres)
+            final_freqs, final_curvs, final_centres, final_counts = group_extremal_orbits(filtered_freqs, filtered_curvs, filtered_centres, tolerances=(frequency_tolerance, curvature_tolerance))
 
             return final_freqs, final_curvs, final_counts
         
@@ -51,7 +55,13 @@ def calculate_frequencies_curvatures(
         end_normal: np.ndarray,
         num_points: int,
         save: bool = True,
-        filename: str = 'angle_sweep.csv'
+        filename: str = 'angle_sweep.csv',
+        tiling: int | Tuple[int, int, int] = 3,
+        endpoints_included: bool = True,
+        height_bz_divisions: int = 100,
+        area_grouping_tolerance: float = 0.05,
+        frequency_tolerance: float = 0.02,
+        curvature_tolerance: float = 0.6
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Calculate the frequencies and curvatures from the band energies.
@@ -83,10 +93,13 @@ def calculate_frequencies_curvatures(
 
     for i, band_index in enumerate(band_indices):
 
-        tiled_band_energy = tile_mesh(band_energies)
-
-        mesh = create_trimesh(band_index, tiled_band_energy, reciprocal_lattice, fermi_energy)
-        results = Parallel(n_jobs=-1)(delayed(calculate_single_frequencies_curvatures)(normal, mesh, reciprocal_lattice) for normal in normals)
+        tiled_band_energy = tile_mesh(band_energies, tiling=tiling, endpoints_included=endpoints_included)
+        mesh = create_trimesh(band_index, tiled_band_energy, reciprocal_lattice, fermi_energy, tiling=tiling)
+        
+        results = Parallel(n_jobs=-1)(delayed(calculate_single_frequencies_curvatures)\
+                                      (normal, mesh, reciprocal_lattice, height_bz_divisions, \
+                                       area_grouping_tolerance, frequency_tolerance, curvature_tolerance)\
+                                        for normal in normals)
 
         for result, theta in zip(results, thetas):
             freqs, curvs, counts = result
@@ -102,6 +115,159 @@ def calculate_frequencies_curvatures(
     
     # package in a dataframe
     df = pd.DataFrame({'band': bands, 'angle': angles, 'frequency': frequencies, 'curvature': curvatures, 'count': all_counts})
+
+    if save:
+        df.to_csv(filename, index=False)
+
+    return df
+
+def calculate_frequencies_curvatures_masses(
+    band_indices: Iterable[int] | int,
+    band_energies: np.ndarray,
+    reciprocal_lattice: np.ndarray,
+    fermi_energy: float,
+    start_normal: np.ndarray,
+    end_normal: np.ndarray,
+    num_points: int,
+    delta_E: float = 1e-5,
+    save: bool = True,
+    filename: str = 'angle_sweep.csv',
+    tiling: int | Tuple[int, int, int] = 3,
+    endpoints_included: bool = True,
+    height_bz_divisions: int = 100,
+    area_grouping_tolerance: float = 0.05,
+    frequency_tolerance: float = 0.02,
+    curvature_tolerance: float = 0.6
+) -> pd.DataFrame:
+    
+    print(f"Calculating frequencies, curvatures, and masses for {num_points} angles.")
+    print('Step 1/3 in progress...')
+
+    df = calculate_frequencies_curvatures(
+        band_indices = band_indices,
+        band_energies = band_energies,
+        reciprocal_lattice = reciprocal_lattice,
+        fermi_energy = fermi_energy,
+        start_normal = start_normal,
+        end_normal = end_normal,
+        num_points = num_points,
+        save=False,
+        tiling=tiling,
+        endpoints_included=endpoints_included,
+        height_bz_divisions=height_bz_divisions,
+        area_grouping_tolerance=area_grouping_tolerance,
+        frequency_tolerance=frequency_tolerance,
+        curvature_tolerance=curvature_tolerance
+    )
+
+    print('Step 1/3 complete.')
+    print('Step 2/3 in progress...')
+    
+    df_plus = calculate_frequencies_curvatures(
+        band_indices = band_indices,
+        band_energies = band_energies,
+        reciprocal_lattice = reciprocal_lattice,
+        fermi_energy = fermi_energy + delta_E/2,
+        start_normal = start_normal,
+        end_normal = end_normal,
+        num_points = num_points,
+        save=False,
+        tiling=tiling,
+        endpoints_included=endpoints_included,
+        height_bz_divisions=height_bz_divisions,
+        area_grouping_tolerance=area_grouping_tolerance,
+        frequency_tolerance=frequency_tolerance,
+        curvature_tolerance=curvature_tolerance        
+    )
+
+    print('Step 2/3 complete.')
+    print('Step 3/3 in progress...')
+
+    df_minus = calculate_frequencies_curvatures(
+        band_indices = band_indices,
+        band_energies = band_energies,
+        reciprocal_lattice = reciprocal_lattice,
+        fermi_energy = fermi_energy - delta_E/2,
+        start_normal = start_normal,
+        end_normal = end_normal,
+        num_points = num_points,
+        save=False,
+        tiling=tiling,
+        endpoints_included=endpoints_included,
+        height_bz_divisions=height_bz_divisions,
+        area_grouping_tolerance=area_grouping_tolerance,
+        frequency_tolerance=frequency_tolerance,
+        curvature_tolerance=curvature_tolerance
+    )
+
+    print('Step 3/3 complete.')
+
+    def grad_to_mass(grad: float | np.ndarray) -> float | np.ndarray:
+        """
+        Convert a gradient to a mass.
+        """
+        hbar = 1.0545718e-34 # J s
+        e = 1.60217662e-19 # C
+        m_e = 9.10938356e-31 # kg
+
+        area = grad / (hbar / (2 * np.pi * e))
+        mass = area * hbar**2 / (2 * np.pi * e * m_e)
+
+        return mass
+    
+    masses = []
+
+    for band in df['band'].unique():
+
+        for angle in df['angle'].unique():
+
+
+            df_angle = df[(df['angle'] == angle) & (df['band'] == band)]
+            df_angle_plus = df_plus[(df_plus['angle'] == angle) & (df_plus['band'] == band)]
+            df_angle_minus = df_minus[(df_minus['angle'] == angle) & (df_minus['band'] == band)]
+
+            # if df_angle is empty, skip to the next angle
+            if df_angle.empty:
+                # print(f"Skipping angle {np.rad2deg(angle):.0f} due to empty df_angle.")
+                continue
+
+            for row in df_angle.itertuples():
+                freq = row.frequency
+                curv = row.curvature
+
+                # find all the rows in the plus and minus dataframes that are within 2% of the frequency and 60% of the curvature and the same count
+                plus_condition = (np.abs(df_angle_plus['frequency'] - freq) < 0.01 * freq) & (np.abs(df_angle_plus['curvature'] - curv) < 0.1 * np.abs(curv)) & (df_angle_plus['count'] == row.count)
+                minus_condition = (np.abs(df_angle_minus['frequency'] - freq) < 0.01 * freq) & (np.abs(df_angle_minus['curvature'] - curv) < 0.1 * np.abs(curv)) & (df_angle_minus['count'] == row.count)
+
+                df_angle_plus_filtered = df_angle_plus[plus_condition]
+                df_angle_minus_filtered = df_angle_minus[minus_condition]
+
+                # if either filtered dataframe is empty, skip to the next row
+                if df_angle_plus_filtered.empty or df_angle_minus_filtered.empty:
+                    # print(f"Skipping angle {np.rad2deg(angle):.0f}, frequency {freq} due to empty filtered dataframes.")
+                    masses.append(np.nan)
+                    continue
+
+                # if the length of either filtered dataframe is greater than 1, choose the one with the closest frequency
+                if len(df_angle_plus_filtered) > 1:
+                    closest_plus_index = np.abs(df_angle_plus_filtered['frequency'].values - freq).argmin()
+                    df_angle_plus_filtered = df_angle_plus_filtered.iloc[[closest_plus_index]]
+
+                if len(df_angle_minus_filtered) > 1:
+                    closest_minus_index = np.abs(df_angle_minus_filtered['frequency'].values - freq).argmin()
+                    df_angle_minus_filtered = df_angle_minus_filtered.iloc[[closest_minus_index]]
+
+                # now we can calculate the gradient and mass
+                freq_plus = df_angle_plus_filtered['frequency'].values[0]
+                freq_minus = df_angle_minus_filtered['frequency'].values[0]
+
+                gradient = (freq_plus - freq_minus) / (1e-5)
+                mass = grad_to_mass(gradient)
+
+                masses.append(mass)
+
+    # add plot_mass to df as 'mass' column
+    df['mass'] = pd.Series(masses)
 
     if save:
         df.to_csv(filename, index=False)

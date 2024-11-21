@@ -1,0 +1,10 @@
+numpy
+matplotlib
+joblib
+trimesh
+scikit-image
+scikit-learn
+pandas
+shapely
+rtree
+seaborn

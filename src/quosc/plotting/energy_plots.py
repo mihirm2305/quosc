@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional, Iterable
 from ..initialisation import load_data
+from ..initialisation.band_calc import generate_kpoints
 
 # function to plot the distribution of energies in each band
 def plot_energy_distribution(
@@ -24,7 +25,7 @@ def plot_energy_distribution(
     energies = energies.reshape(energies.shape[0], -1)
 
     plt.figure(**kwargs)
-    plt.boxplot(energies.T, whis=[0,100])
+    plt.boxplot(energies.T, whis=[0,100], tick_labels=np.arange(0, energies.shape[0]))
     plt.axhline(fermi_energy, color='r', linestyle='--')
     plt.xlabel('Band index')
     plt.ylabel('Energy (eV)')
@@ -34,17 +35,25 @@ def plot_energy_distribution(
 # function to plot the band structure (3D k-points coloured by energy)
 def plot_band_structure(
         band_indices: Iterable[int],
-        kpoints: np.ndarray,
         energies: np.ndarray,
+        reciprocal_lattice: np.ndarray,
+        kpoints: Optional[np.ndarray] = None,
         fermi_energy: Optional[float] = None,
         **kwargs
 ):
     """
     Plot the band structure
     """
-    fig = plt.figure(**kwargs)
-    ax = fig.add_subplot(111, projection='3d')
+
+    if kpoints is None:
+        kpoints = generate_kpoints(n_kpoints=energies.shape[1:])
+
+    kpoints = np.dot(kpoints, reciprocal_lattice)
+
     for band_index in band_indices:
+
+        fig = plt.figure(**kwargs)
+        ax = fig.add_subplot(111, projection='3d')
         ax.scatter(
         kpoints[:, 0],
         kpoints[:, 1],

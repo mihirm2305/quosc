@@ -9,7 +9,7 @@ def generate_heights(
         bz_divisions: int = 100
 ) -> np.ndarray:
     """
-    Generate a grid of heights in the reciprocal lattice.
+    Generate an array of heights for the different slices.
     """
     
     if isinstance(tiling, int):
@@ -47,6 +47,7 @@ def get_section_data(
         normal: np.ndarray,
         heights: np.ndarray,
         origin: np.ndarray = np.zeros(3)
+        # return_vertices: bool = False
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Extract the data from a list of sections.
@@ -55,6 +56,9 @@ def get_section_data(
     areas = []
     area_heights = []
     area_3d_centres = []
+
+    # if return_vertices:
+
     
     # Compute two orthogonal vectors on the plane from the normal
     normal = normal / np.linalg.norm(normal)  # Normalize the normal
